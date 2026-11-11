@@ -68,9 +68,12 @@ function doPost(e) {
     
     var action = postData.action || (e && e.parameter ? e.parameter.action : '');
     
-    // 1. Authentication
+    // 1. Authentication & Profile
     if (action === 'login') {
       return handleLogin(postData);
+    }
+    if (action === 'updateProfile' || action === 'changePassword' || action === 'updatePassword') {
+      return handleUpdateUser(postData);
     }
     
     // 2. Laporan CRUD

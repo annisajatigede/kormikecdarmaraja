@@ -118,74 +118,153 @@ function handleSaveUser(data) {
 }
 
 function handleUpdateUser(data) {
-  var authUser = getAuthenticatedUser(data.authUserId);
-  if (!authUser || (authUser.ROLE !== 'Admin' && authUser.ROLE !== 'Koordinator')) {
-    return jsonResponse({ success: false, message: 'Anda tidak memiliki izin mengedit user' });
-  }
-  
+  var authUserId = data.authUserId || data.ID_USER;
+  var authUser = getAuthenticatedUser(authUserId);
   var idUser = data.ID_USER;
-  var nama = (data.NAMA || '').trim();
-  var idDesa = data.ID_DESA || '';
-  var namaDesa = data.NAMA_DESA || '';
-  var status = data.STATUS || 'Aktif';
-  var newPassword = (data.PASSWORD || '').trim();
   
-  if (!idUser || !nama) {
-    return jsonResponse({ success: false, message: 'ID User dan Nama wajib diisi' });
+  if (!idUser) {
+    return jsonResponse({ success: false, message: 'ID User wajib diisi' });
+  }
+
+  // Cek apakah user sedang mengedit akun miliknya sendiri (misal dari menu Profil / Ganti Password)
+  var isSelf = (authUser && (
+    String(authUser.ID_USER).trim().toLowerCase() === String(idUser).trim().toLowerCase() ||
+    (data.USERNAME && String(authUser.USERNAME).trim().toLowerCase() === String(data.USERNAME).trim().toLowerCase())
+  ));
+
+  // Hanya Admin, Koordinator, atau user itu sendiri (self-update) yang diizinkan memperbarui data
+  if (!authUser || (!isSelf && authUser.ROLE !== 'Admin' && authUser.ROLE !== 'Koordinator')) {
+    return jsonResponse({ success: false, message: 'Anda tidak memiliki izin mengedit user ini' });
   }
   
+  var newPassword = (data.PASSWORD !== undefined ? data.PASSWORD : (data.password !== undefined ? data.password : (data.newPassword !== undefined ? data.newPassword : ''))).toString().trim();
+  if (newPassword && newPassword.length < 6) {
+    return jsonResponse({ success: false, message: 'Password baru minimal 6 karakter' });
+  }
+
   var lock = LockService.getScriptLock();
   try {
     lock.waitLock(CONFIG.LOCK_TIMEOUT_MS);
     var sheet = getSheet(CONFIG.SHEET_NAMES.USERS);
     var values = sheet.getDataRange().getValues();
+    if (values.length <= 1) {
+      return jsonResponse({ success: false, message: 'Database user kosong' });
+    }
+
+    var headers = values[0];
+    var idCol = headers.indexOf('ID_USER') + 1;
+    if (idCol === 0) idCol = 1;
+    var namaCol = headers.indexOf('NAMA') + 1;
+    if (namaCol === 0) namaCol = 2;
+    var userCol = headers.indexOf('USERNAME') + 1;
+    if (userCol === 0) userCol = 3;
+    var passCol = headers.indexOf('PASSWORD_HASH') + 1;
+    if (passCol === 0) passCol = headers.indexOf('PASSWORD') + 1;
+    if (passCol === 0) passCol = 4;
+    var roleCol = headers.indexOf('ROLE') + 1;
+    if (roleCol === 0) roleCol = 5;
+    var desaCol = headers.indexOf('ID_DESA') + 1;
+    if (desaCol === 0) desaCol = 6;
+    var namaDesaCol = headers.indexOf('NAMA_DESA') + 1;
+    if (namaDesaCol === 0) namaDesaCol = 7;
+    var statusCol = headers.indexOf('STATUS') + 1;
+    if (statusCol === 0) statusCol = 8;
+    var updatedCol = headers.indexOf('UPDATED_AT') + 1;
+    if (updatedCol === 0) updatedCol = 10;
+
     var foundRow = -1;
-    var currentRole = '';
-    
+    var existingRow = null;
+
     for (var i = 1; i < values.length; i++) {
-      if (String(values[i][0]) === String(idUser)) {
+      var rowId = String(values[i][idCol - 1] || '').trim().toLowerCase();
+      var targetId = String(idUser).trim().toLowerCase();
+      var rowUser = String(values[i][userCol - 1] || '').trim().toLowerCase();
+      var targetUser = data.USERNAME ? String(data.USERNAME).trim().toLowerCase() : '';
+
+      if (rowId === targetId || (targetUser && rowUser === targetUser)) {
         foundRow = i + 1;
-        currentRole = values[i][4];
+        existingRow = values[i];
         break;
       }
     }
-    
-    if (foundRow === -1) {
+
+    if (foundRow === -1 || !existingRow) {
       return jsonResponse({ success: false, message: 'Data user tidak ditemukan' });
     }
-    
-    // Koordinator cannot edit Admin or Koordinator
-    if (authUser.ROLE === 'Koordinator' && currentRole !== 'Kader') {
+
+    var currentRole = String(existingRow[roleCol - 1] || 'Kader');
+
+    // Koordinator hanya dapat mengedit user dengan role Kader (kecuali sedang mengedit profil sendiri)
+    if (!isSelf && authUser.ROLE === 'Koordinator' && currentRole !== 'Kader') {
       return jsonResponse({ success: false, message: 'Koordinator hanya dapat mengedit user dengan role Kader' });
     }
-    
+
     var roleToSave = currentRole;
     if (authUser.ROLE === 'Admin' && data.ROLE) {
       roleToSave = data.ROLE;
     }
-    
-    var nowStr = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm:ss');
-    sheet.getRange(foundRow, 2).setValue(nama); // NAMA
-    if (newPassword) {
-      sheet.getRange(foundRow, 4).setValue(hashPassword(newPassword)); // PASSWORD_HASH
+
+    // Nama lengkap
+    var finalNama = (data.NAMA !== undefined && String(data.NAMA).trim() !== '')
+      ? String(data.NAMA).trim()
+      : String(existingRow[namaCol - 1] || '').trim();
+
+    if (!finalNama) {
+      return jsonResponse({ success: false, message: 'Nama user tidak boleh kosong' });
     }
-    sheet.getRange(foundRow, 5).setValue(roleToSave); // ROLE
-    sheet.getRange(foundRow, 6).setValue(idDesa); // ID_DESA
-    sheet.getRange(foundRow, 7).setValue(namaDesa); // NAMA_DESA
-    sheet.getRange(foundRow, 8).setValue(status); // STATUS
-    sheet.getRange(foundRow, 10).setValue(nowStr); // UPDATED_AT
+
+    // Data Desa & Status: Pertahankan nilai lama jika self-update oleh non-Admin
+    var idDesa = existingRow[desaCol - 1] || '';
+    var namaDesa = existingRow[namaDesaCol - 1] || '';
+    var status = existingRow[statusCol - 1] || 'Aktif';
+
+    if (authUser.ROLE === 'Admin' || (authUser.ROLE === 'Koordinator' && !isSelf)) {
+      if (data.ID_DESA !== undefined && data.ID_DESA !== '') idDesa = data.ID_DESA;
+      if (data.NAMA_DESA !== undefined && data.NAMA_DESA !== '') namaDesa = data.NAMA_DESA;
+      if (data.STATUS !== undefined && data.STATUS !== '') status = data.STATUS;
+    }
+
+    var nowStr = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm:ss');
     
+    // Simpan Nama ke sheet
+    sheet.getRange(foundRow, namaCol).setValue(finalNama);
+    
+    // UPDATE PASSWORD KE DATASHEET (JIKA DIISI)
+    if (newPassword) {
+      var passwordHash = hashPassword(newPassword);
+      sheet.getRange(foundRow, passCol).setValue(passwordHash);
+    }
+    
+    // Simpan Role, Desa, Status, dan UpdatedAt
+    sheet.getRange(foundRow, roleCol).setValue(roleToSave);
+    if (desaCol > 0) sheet.getRange(foundRow, desaCol).setValue(idDesa);
+    if (namaDesaCol > 0) sheet.getRange(foundRow, namaDesaCol).setValue(namaDesa);
+    if (statusCol > 0) sheet.getRange(foundRow, statusCol).setValue(status);
+    if (updatedCol > 0) sheet.getRange(foundRow, updatedCol).setValue(nowStr);
+
     recordAuditLog({
       ID_USER: authUser.ID_USER,
       NAMA_USER: authUser.NAMA,
       ROLE: authUser.ROLE,
-      ACTION: 'UPDATE_USER',
+      ACTION: newPassword ? 'UPDATE_PASSWORD' : 'UPDATE_USER',
       TABLE_NAME: 'USERS',
       RECORD_ID: idUser,
-      DESCRIPTION: 'Mengubah user ' + nama + ' (Role: ' + roleToSave + ', Status: ' + status + ')'
+      DESCRIPTION: (isSelf ? 'User memperbarui profil sendiri' : 'Mengubah user ' + finalNama) + (newPassword ? ' (Password berhasil diperbarui)' : '')
     });
-    
-    return jsonResponse({ success: true, message: 'Data user berhasil diperbarui' });
+
+    return jsonResponse({
+      success: true,
+      message: newPassword ? 'Data user dan password berhasil diperbarui ke datasheet' : 'Data user berhasil diperbarui',
+      data: {
+        ID_USER: idUser,
+        NAMA: finalNama,
+        ROLE: roleToSave,
+        ID_DESA: idDesa,
+        NAMA_DESA: namaDesa,
+        STATUS: status,
+        UPDATED_AT: nowStr
+      }
+    });
   } finally {
     lock.releaseLock();
   }

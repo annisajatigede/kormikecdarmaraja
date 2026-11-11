@@ -60,7 +60,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onUserUpdated, o
         };
         saveSession(updated);
         onUserUpdated(updated);
-        showSuccess("Profil akun berhasil diperbarui");
+        showSuccess(res.message || "Profil akun berhasil diperbarui");
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");

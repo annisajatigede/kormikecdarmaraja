@@ -23,13 +23,22 @@ function handleLogin(data) {
   
   var headers = values[0];
   var uIdx = headers.indexOf('USERNAME');
+  if (uIdx === -1) uIdx = 2;
   var pIdx = headers.indexOf('PASSWORD_HASH');
+  if (pIdx === -1) pIdx = headers.indexOf('PASSWORD');
+  if (pIdx === -1) pIdx = 3;
   var idIdx = headers.indexOf('ID_USER');
+  if (idIdx === -1) idIdx = 0;
   var namaIdx = headers.indexOf('NAMA');
+  if (namaIdx === -1) namaIdx = 1;
   var roleIdx = headers.indexOf('ROLE');
+  if (roleIdx === -1) roleIdx = 4;
   var idDesaIdx = headers.indexOf('ID_DESA');
+  if (idDesaIdx === -1) idDesaIdx = 5;
   var namaDesaIdx = headers.indexOf('NAMA_DESA');
+  if (namaDesaIdx === -1) namaDesaIdx = 6;
   var statusIdx = headers.indexOf('STATUS');
+  if (statusIdx === -1) statusIdx = 7;
   
   for (var i = 1; i < values.length; i++) {
     var row = values[i];
@@ -90,16 +99,26 @@ function getAuthenticatedUser(userId) {
   
   var headers = values[0];
   var idIdx = headers.indexOf('ID_USER');
+  if (idIdx === -1) idIdx = 0;
   var namaIdx = headers.indexOf('NAMA');
+  if (namaIdx === -1) namaIdx = 1;
   var uIdx = headers.indexOf('USERNAME');
+  if (uIdx === -1) uIdx = 2;
   var roleIdx = headers.indexOf('ROLE');
+  if (roleIdx === -1) roleIdx = 4;
   var idDesaIdx = headers.indexOf('ID_DESA');
+  if (idDesaIdx === -1) idDesaIdx = 5;
   var namaDesaIdx = headers.indexOf('NAMA_DESA');
+  if (namaDesaIdx === -1) namaDesaIdx = 6;
   var statusIdx = headers.indexOf('STATUS');
+  if (statusIdx === -1) statusIdx = 7;
   
+  var target = String(userId).trim().toLowerCase();
   for (var i = 1; i < values.length; i++) {
     var row = values[i];
-    if (String(row[idIdx]) === String(userId)) {
+    var rowId = String(row[idIdx] || '').trim().toLowerCase();
+    var rowUser = String(row[uIdx] || '').trim().toLowerCase();
+    if (rowId === target || rowUser === target) {
       if (String(row[statusIdx]).toLowerCase() === 'nonaktif') {
         return null;
       }

@@ -109,7 +109,7 @@ function doPost(e) {
     if (action === 'updateJenisSenam') return handleUpdateJenisSenam(postData);
     if (action === 'deleteJenisSenam') return handleDeleteJenisSenam(postData);
     if (action === 'saveUser') return handleSaveUser(postData);
-    if (action === 'updateUser') return handleUpdateUser(postData);
+    if (action === 'updateUser' || action === 'updateProfile' || action === 'changePassword' || action === 'updatePassword') return handleUpdateUser(postData);
     if (action === 'deleteUser') return handleDeleteUser(postData);
     if (action === 'uploadFoto') return handleUploadFoto(postData);
     return jsonResponse({ success: false, message: 'Action POST tidak dikenali: ' + action });

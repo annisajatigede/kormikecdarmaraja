@@ -136,7 +136,7 @@ async function callApi<T>(action: string, method: "GET" | "POST", payload?: any)
         },
         body: JSON.stringify({
           action,
-          authUserId: session?.ID_USER || "",
+          authUserId: session?.ID_USER || payload?.ID_USER || payload?.authUserId || "",
           ...payload
         })
       });
@@ -196,10 +196,12 @@ export const apiService = {
   updateJenisSenam: (data: Partial<JenisSenam>) => callApi<JenisSenam>("updateJenisSenam", "POST", data),
   deleteJenisSenam: (idJenis: string) => callApi<void>("deleteJenisSenam", "POST", { ID_JENIS: idJenis }),
 
-  // Users
+  // Users & Profile
   getUsers: () => callApi<User[]>("getUsers", "GET"),
   saveUser: (data: Partial<User> & { PASSWORD?: string }) => callApi<User>("saveUser", "POST", data),
   updateUser: (data: Partial<User> & { PASSWORD?: string }) => callApi<User>("updateUser", "POST", data),
+  updateProfile: (data: Partial<User> & { PASSWORD?: string }) => callApi<User>("updateUser", "POST", data),
+  changePassword: (newPassword: string, idUser?: string) => callApi<User>("updateUser", "POST", { PASSWORD: newPassword, ID_USER: idUser }),
   deleteUser: (idUser: string) => callApi<void>("deleteUser", "POST", { ID_USER: idUser }),
 
   // Audit Log
